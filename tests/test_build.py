@@ -30,7 +30,54 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(pay[2], "[]🎯 全球直连")
         self.assertEqual(pay[-1], ".*")
         rules = [x for x in output.splitlines() if x.startswith("ruleset=")]
-        self.assertEqual(rules[2], "ruleset=💳 PayPal,[]GEOSITE,paypal")
+        index = rules.index("ruleset=💳 PayPal,[]GEOSITE,paypal")
+        self.assertEqual(rules[index - 1:index + 2], [
+            "ruleset=🌎 国外媒体,[]GEOSITE,category-entertainment",
+            "ruleset=💳 PayPal,[]GEOSITE,paypal",
+            "ruleset=🛒 国外电商,[]GEOSITE,category-ecommerce",
+        ])
+        names = list(groups)
+        for before, name, after in [("Ⓜ️ 微软服务", "💳 PayPal", "🎮 游戏平台"),
+                                    ("🇰🇷 韩国节点", "🏠 家宽节点", "🎯 全球直连")]:
+            index = names.index(name)
+            self.assertEqual(names[index - 1:index + 2], [before, name, after])
+
+    def placement_pairs(self):
+        lines = self.source.splitlines()
+        return [
+            ["ruleset=🌎 国外媒体,[]GEOSITE,category-entertainment",
+             "ruleset=🛒 国外电商,[]GEOSITE,category-ecommerce"],
+            [next(x for x in lines if x.startswith(build.GROUP + name + "`"))
+             for name in ["Ⓜ️ 微软服务", "🎮 游戏平台"]],
+            [next(x for x in lines if x.startswith(build.GROUP + name + "`"))
+             for name in ["🇰🇷 韩国节点", "🎯 全球直连"]],
+        ]
+
+    def test_missing_placement_anchors_stop_build(self):
+        for pair in self.placement_pairs():
+            for line in pair:
+                with self.subTest(anchor=line), self.assertRaises(build.BuildError):
+                    self.output(self.source.replace(line + "\n", ""))
+
+    def test_reversed_placement_anchors_stop_build(self):
+        for before, after in self.placement_pairs():
+            with self.subTest(anchor=before), self.assertRaises(build.BuildError):
+                self.output(self.source.replace(before + "\n" + after, after + "\n" + before))
+
+    def test_new_entry_between_placement_anchors_requires_review(self):
+        for before, after in self.placement_pairs():
+            addition = ("ruleset=🎯 全球直连,[]GEOSITE,example" if before.startswith(build.RULE)
+                        else "custom_proxy_group=新分组`select`[]DIRECT")
+            with self.subTest(anchor=before), self.assertRaises(build.BuildError):
+                self.output(self.source.replace(before + "\n" + after,
+                                                before + "\n" + addition + "\n" + after))
+
+    def test_comments_between_placement_anchors_survive(self):
+        for before, after in self.placement_pairs():
+            with self.subTest(anchor=before):
+                output = self.output(self.source.replace(before + "\n" + after,
+                                                         before + "\n; placement comment\n\n" + after))
+                self.assertIn("; placement comment\n\n" + after, output)
 
     def test_upstream_regex_improvements_survive(self):
         changed = self.source.replace("波特兰|", "新增美国城市|波特兰|", 1)

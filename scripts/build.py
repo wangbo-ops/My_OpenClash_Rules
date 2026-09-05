@@ -20,6 +20,10 @@ GROUP = "custom_proxy_group="
 RULE = "ruleset="
 ANCHORS = ["ruleset=🎯 全球直连,[]GEOSITE,private",
            "ruleset=🎯 全球直连,[]GEOIP,private,no-resolve"]
+PAYPAL_RULE_ANCHORS = ["ruleset=🌎 国外媒体,[]GEOSITE,category-entertainment",
+                       "ruleset=🛒 国外电商,[]GEOSITE,category-ecommerce"]
+PAYPAL_GROUP_ANCHORS = ["Ⓜ️ 微软服务", "🎮 游戏平台"]
+HOME_GROUP_ANCHORS = ["🇰🇷 韩国节点", "🎯 全球直连"]
 BUILTINS = {"DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"}
 
 
@@ -62,6 +66,15 @@ def to_select(fields):
     require(re.fullmatch(r"\d+(?:,\d*){0,2}", fields[-1]) is not None,
             f"Unrecognized health-check interval: {fields[0]}")
     return [fields[0], "select", *fields[2:-2]]
+
+
+def insertion_anchor(items, anchors):
+    for anchor in anchors:
+        require(items.count(anchor) == 1, f"Missing/duplicate placement anchor: {anchor}")
+    index = items.index(anchors[0])
+    require(items[index:index + 2] == anchors,
+            f"Upstream placement changed; review required: {anchors}")
+    return index
 
 
 def validate_references(lines):
@@ -128,7 +141,10 @@ def generate(source, settings):
     for anchor in ANCHORS:
         require(lines.count(anchor) == 1, f"Missing/duplicate rule anchor: {anchor}")
     require([line for line in lines if line.startswith(RULE)][:2] == ANCHORS,
-            "Upstream rule prefix changed; review PayPal priority")
+            "Upstream private rule prefix changed; review required")
+    insertion_anchor([line for line in lines if line.startswith(RULE)], PAYPAL_RULE_ANCHORS)
+    insertion_anchor(list(groups), PAYPAL_GROUP_ANCHORS)
+    insertion_anchor(list(groups), HOME_GROUP_ANCHORS)
 
     replacements = {}
     expected_groups = {}
@@ -145,17 +161,17 @@ def generate(source, settings):
         pay_fields.append(".*")
     pay_line = GROUP + "`".join(pay_fields)
     rule_line = RULE + pay_name + ",[]GEOSITE,paypal"
-    rule_anchor = lines.index(ANCHORS[-1])
-    first_group = min(index for index, _ in groups.values())
+    insertions = {
+        lines.index(PAYPAL_RULE_ANCHORS[0]): rule_line,
+        groups[PAYPAL_GROUP_ANCHORS[0]][0]: pay_line,
+        groups[HOME_GROUP_ANCHORS[0]][0]: home_line,
+    }
     output, origins = [], []
     for i, line in enumerate(lines):
-        if i == first_group:
-            output.extend([home_line, pay_line])
-            origins.extend([None, None])
         output.append(replacements.get(i, line))
         origins.append(i)
-        if i == rule_anchor:
-            output.append(rule_line)
+        if i in insertions:
+            output.append(insertions[i])
             origins.append(None)
 
     # Check that every unowned source line survives in its original order.
@@ -169,8 +185,14 @@ def generate(source, settings):
         require(final_groups[name][1] == fields, f"Select conversion failed: {name}")
     require(output.count(home_line) == output.count(pay_line) == output.count(rule_line) == 1,
             "Personal group/rule count mismatch")
-    require([line for line in output if line.startswith(RULE)][:3] == ANCHORS + [rule_line],
-            "PayPal rule priority mismatch")
+    for items, anchors, inserted in [
+        ([line for line in output if line.startswith(RULE)], PAYPAL_RULE_ANCHORS, rule_line),
+        (list(final_groups), PAYPAL_GROUP_ANCHORS, pay_name),
+        (list(final_groups), HOME_GROUP_ANCHORS, home_name),
+    ]:
+        index = items.index(anchors[0])
+        require(items[index:index + 3] == [anchors[0], inserted, anchors[1]],
+                f"Personal placement mismatch: {inserted}")
     validate_references(output)
     header = ("; Generated personal derivative; edit custom/settings.json, not this file.\n"
               "; Upstream: https://github.com/" + UPSTREAM + "\n"
