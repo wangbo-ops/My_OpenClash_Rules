@@ -26,7 +26,7 @@ https://raw.githubusercontent.com/wangbo-ops/My_OpenClash_Rules/main/cfg/Custom_
 
 ## 更新策略
 
-定时设置为 UTC 01:17，即北京时间每天 09:17；支持手动触发，修改脚本、设置或测试也会触发。
+定时设置为 UTC 21:30，即北京时间次日 05:30（每天一次）；支持手动触发，修改脚本、设置、测试或工作流也会触发。
 
 工作流读取上游 main 的准确提交 SHA，再按 SHA 获取模板。它只将模板当作数据读取，不执行上游代码、不同步上游工作流。
 
@@ -35,6 +35,12 @@ https://raw.githubusercontent.com/wangbo-ops/My_OpenClash_Rules/main/cfg/Custom_
 上游组名缺失、结构变化、增加同名 PayPal/家宽组或已有 PayPal 规则时，工作流停止发布，保留上一份模板。不存在任何强制同步或强制推送操作。设置以 `custom/settings.json` 为准，不会从上游覆盖。
 
 GitHub 调度可能延迟或被丢弃；公共仓库连续 60 天没有活动时定时任务会停用，需要在 Actions 中重新启用。GitHub 的通知设置可用于接收失败通知。工作流使用内置 GITHUB_TOKEN 的 contents: write 权限，无需将个人访问令牌写入文件；仓库或组织策略仍可能限制写入。
+
+### 失败通知
+
+在 GitHub [Settings → Notifications](https://github.com/settings/notifications) 的 System → Actions 中启用 Email，可同时启用 On GitHub，并勾选 Only notify for failed workflows 后保存。参见 [官方设置说明](https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-github-actions-notifications)。
+
+定时工作流通知发送给最后修改 cron 的用户，参见 [schedule 文档](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。需要该用户启用相应通知；仓库代码无法代替账号通知设置。失败通知覆盖已启动但失败的运行；任务未被调度或被停用时，不能依赖失败通知发现漏跑。
 
 ## 调整个人设置
 

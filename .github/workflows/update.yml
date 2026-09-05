@@ -2,7 +2,7 @@ name: Update personal OpenClash template
 
 on:
   schedule:
-    - cron: '17 1 * * *'  # 每天北京时间 09:17（UTC 01:17）
+    - cron: '30 21 * * *'  # 每天北京时间 05:30（前一天 UTC 21:30）
   workflow_dispatch:
   push:
     branches: [main]
