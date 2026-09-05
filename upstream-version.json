@@ -1,0 +1,8 @@
+{
+  "repository": "Aethersailor/Custom_OpenClash_Rules",
+  "commit": "76f94d6aeb8297a0a47aeb244fc16afcddcf6cd4",
+  "source_path": "cfg/Custom_Clash.ini",
+  "source_sha256": "bf0dc49251cde4deed1440b4232a7a92a8dd433e66138b8a6ac0bf1cf85f4890",
+  "settings_sha256": "9bb1912f89c74993942b80698c79ef140ee91227ac88c15c48691c1f2eeca02f",
+  "output_sha256": "14128924e947970b620a785ea527396f3067069950c99695fd72b9294a1611d0"
+}

@@ -1,0 +1,60 @@
+name: Update personal OpenClash template
+
+on:
+  schedule:
+    - cron: '17 1 * * *'  # 每天北京时间 09:17（UTC 01:17）
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'custom/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/update.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-personal-template
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out personal repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+
+      - name: Test customization and failure handling
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Fetch upstream and generate validated template
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/build.py
+
+      - name: Commit validated outputs if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- cfg/Custom_Clash.ini vendor/Custom_Clash.ini upstream-version.json
+          if git diff --cached --quiet; then
+            echo 'Upstream and settings unchanged; no commit needed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update validated personal OpenClash template'
+          git push origin HEAD:main
+          echo 'Published validated template: cfg/Custom_Clash.ini' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain failed update
+        if: failure()
+        run: |
+          echo 'Update failed. No unvalidated template was published. Review the failed step before retrying.' >> "$GITHUB_STEP_SUMMARY"
