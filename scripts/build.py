@@ -23,7 +23,6 @@ ANCHORS = ["ruleset=🎯 全球直连,[]GEOSITE,private",
 PAYPAL_RULE_ANCHORS = ["ruleset=🌎 国外媒体,[]GEOSITE,category-entertainment",
                        "ruleset=🛒 国外电商,[]GEOSITE,category-ecommerce"]
 PAYPAL_GROUP_ANCHORS = ["Ⓜ️ 微软服务", "🎮 游戏平台"]
-HOME_GROUP_ANCHORS = ["🇰🇷 韩国节点", "🎯 全球直连"]
 BUILTINS = {"DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"}
 
 
@@ -77,23 +76,6 @@ def insertion_anchor(items, anchors):
     return index
 
 
-def append_residential(fields, home_name):
-    """Put the home group last among choices, before any health-check suffix."""
-    if fields[1] == "select":
-        choices, suffix = fields[2:], []
-        require(not any(x.startswith(("http://", "https://")) for x in choices),
-                f"Unexpected URL in select group: {fields[0]}")
-    else:
-        require(fields[1] in {"url-test", "fallback", "load-balance"},
-                f"Unsupported residential choice group type: {fields[0]} / {fields[1]}")
-        require(len(fields) >= 5 and fields[-2].startswith(("http://", "https://"))
-                and re.fullmatch(r"\d+(?:,\d*){0,2}", fields[-1]) is not None,
-                f"Unrecognized health-check layout: {fields[0]}")
-        choices, suffix = fields[2:-2], fields[-2:]
-    reference = "[]" + home_name
-    return [*fields[:2], *[x for x in choices if x != reference], reference, *suffix]
-
-
 def validate_references(lines):
     groups = group_index(lines)
     edges = {}
@@ -137,15 +119,10 @@ def generate(source, settings):
     for name in wanted:
         token(name)
     require(len(set(wanted)) == len(wanted), "Duplicate select_groups setting")
-    residential = settings["residential"]
     paypal = settings["paypal"]
-    home_name, pay_name = token(residential["name"]), token(paypal["name"])
-    require(home_name != pay_name, "Personal group names must differ")
-    for name in [home_name, pay_name]:
-        require("," not in name, "Comma in custom group name")
-        require(name not in groups, f"Upstream now defines personal group {name}; review required")
-    home_filter = token(residential["filter"])
-    re.compile(home_filter)
+    pay_name = token(paypal["name"])
+    require("," not in pay_name, "Comma in custom group name")
+    require(pay_name not in groups, f"Upstream now defines personal group {pay_name}; review required")
     choices = paypal["choices"]
     require(isinstance(choices, list) and choices, "PayPal requires choices")
     for name in choices:
@@ -161,32 +138,25 @@ def generate(source, settings):
             "Upstream private rule prefix changed; review required")
     insertion_anchor([line for line in lines if line.startswith(RULE)], PAYPAL_RULE_ANCHORS)
     insertion_anchor(list(groups), PAYPAL_GROUP_ANCHORS)
-    insertion_anchor(list(groups), HOME_GROUP_ANCHORS)
 
     replacements = {}
     expected_groups = {}
     for name in wanted:
         require(name in groups, f"Upstream group missing or renamed: {name}")
-    for name, (index, fields) in groups.items():
-        modified = to_select(fields) if name in wanted else list(fields)
-        regional = name in wanted or re.fullmatch(r"[\U0001F1E6-\U0001F1FF]{2}\s+.+节点", name)
-        if name not in {"🎯 全球直连", "🔀 非标端口", home_name} and not regional:
-            modified = append_residential(modified, home_name)
+        index, fields = groups[name]
+        modified = to_select(fields)
         if modified != fields:
             expected_groups[name] = modified
             replacements[index] = GROUP + "`".join(modified)
 
-    home_line = GROUP + "`".join([home_name, "select", home_filter])
     pay_fields = [pay_name, "select", *["[]" + v for v in choices]]
     if paypal["include_all_nodes"]:
         pay_fields.append(".*")
-    pay_fields = append_residential(pay_fields, home_name)
     pay_line = GROUP + "`".join(pay_fields)
     rule_line = RULE + pay_name + ",[]GEOSITE,paypal"
     insertions = {
         lines.index(PAYPAL_RULE_ANCHORS[0]): rule_line,
         groups[PAYPAL_GROUP_ANCHORS[0]][0]: pay_line,
-        groups[HOME_GROUP_ANCHORS[0]][0]: home_line,
     }
     output, origins = [], []
     for i, line in enumerate(lines):
@@ -205,12 +175,11 @@ def generate(source, settings):
     final_groups = group_index(output)
     for name, fields in expected_groups.items():
         require(final_groups[name][1] == fields, f"Group customization failed: {name}")
-    require(output.count(home_line) == output.count(pay_line) == output.count(rule_line) == 1,
+    require(output.count(pay_line) == output.count(rule_line) == 1,
             "Personal group/rule count mismatch")
     for items, anchors, inserted in [
         ([line for line in output if line.startswith(RULE)], PAYPAL_RULE_ANCHORS, rule_line),
         (list(final_groups), PAYPAL_GROUP_ANCHORS, pay_name),
-        (list(final_groups), HOME_GROUP_ANCHORS, home_name),
     ]:
         index = items.index(anchors[0])
         require(items[index:index + 3] == [anchors[0], inserted, anchors[1]],
@@ -218,7 +187,7 @@ def generate(source, settings):
     validate_references(output)
     header = ("; Generated personal derivative; edit custom/settings.json, not this file.\n"
               "; Upstream: https://github.com/" + UPSTREAM + "\n"
-              "; Changes: PayPal rule/group, residential group/choices, regional select groups.\n"
+              "; Changes: PayPal rule/group, regional select groups.\n"
               "; Template license: CC BY-SA 4.0; see LICENCE and NOTICE.md.\n")
     return header + "\n".join(output) + "\n"
 
